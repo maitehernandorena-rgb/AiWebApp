@@ -7,6 +7,8 @@ st.write("Harvey is a friendly assistant, ready to help you in your daily tasks.
 #if st.button("SUBMIT"):
     #st.write(f"Hello, {name}! Welcome! Your name has {len(name)} letters!")
 
+st.set_page_config(page_title="Harvey", page_icon="H", layout="wide")
+
 with st.sidebar:
     st.header("Settings")
     with st.form("settings"):
@@ -17,17 +19,24 @@ with st.sidebar:
     if saved:
         st.write(f"Saved mood is {mood} and creativity is {creativity}.")
 
-left, right = st.columns(2)
-left.write(f"Creativity:  {creativity}")
-right.write(f"Mood: {mood}")
+#left, right = st.columns(2)
+#left.write(f"Creativity:  {creativity}")
+#right.write(f"Mood: {mood}")
 
-with st.chat_message("user"):
-    st.write(f"Welcome!")
-with st.chat_message("assistant"):
-    st.write(f"Hello {name}! Welcome! Your name has {len(name)} letters!")
+#with st.chat_message("user"):
+    #st.write(f"Welcome!")
+#with st.chat_message("assistant"):
+    #st.write(f"Hello {name}! Welcome! Your name has {len(name)} letters!")
+import requests
 
 prompt = st.chat_input("Ask something her...")
+#r = requests.get(https://catfact.ninja/fact)
+#facts = r.json()["fact"]
 
 if prompt:
     with st.chat_message("user"):
-        st.write(prompt)
+        st.write(f"{prompt}")
+    with st.chat_message("assistant"):
+        st.write(f"Hello {name}! Welcome! Heres what you wrote: {prompt}")
+    #with st.chat_message("user"):
+        #st.write(prompt)
