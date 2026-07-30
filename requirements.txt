@@ -1,4 +1,1 @@
 streamlit
-openai
-python-dotenv
-chromedb
