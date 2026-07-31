@@ -37,7 +37,7 @@ if prompt:
             client = OpenAI(
                 #base_url="https://models.github.ai/inference",
                 base_url="https://api.groq.com/openai/v1",
-                api_key=os.getenv("AI_TOKEN"),
+                api_key=os.getenv("AI_TOKEN") or st.secrets["AI_TOKEN"],
             )
             r = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
