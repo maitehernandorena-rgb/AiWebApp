@@ -4,11 +4,11 @@ import os
 from dotenv import load_dotenv
 from openai import OpenAI
 
-st.title("Harvey")
-st.write("Harvey is a friendly assistant, ready to help you in your daily tasks. Whether your homework is complicated or taxes are hard or something idk.")
-
-
 st.set_page_config(page_title="Harvey", page_icon="H", layout="wide")
+
+st.title("Harvey")
+st.write("Harvey is a friendly assistant, ready to help you in your daily tasks. Whether your homework is complicated or taxes are hard or something idk. Please start by setting up your AI in the left Tab.")
+
 
 with st.sidebar:
     st.header("Settings")
@@ -33,6 +33,8 @@ if prompt:
             fact = r.json()["fact"]
             st.write(f"{fact}")
         else:
+            promptforai = f"""You are a {mood} assistant with {creativity} creativity from a scale from 0 to 1.
+            Current Prompt: {prompt}"""
             load_dotenv()
             client = OpenAI(
                 #base_url="https://models.github.ai/inference",
@@ -41,7 +43,7 @@ if prompt:
             )
             r = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{"role": "user", "content": promptforai}]
             )
 
             response = r.choices[0].message.content
