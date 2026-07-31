@@ -1,11 +1,12 @@
 import streamlit as st
+import requests
+import os
+from dotenv import load_dotenv
+from openai import OpenAI
 
 st.title("Harvey")
 st.write("Harvey is a friendly assistant, ready to help you in your daily tasks. Whether your homework is complicated or taxes are hard or something idk.")
 
-#name = st.text_input("Enter your name: ")
-#if st.button("SUBMIT"):
-    #st.write(f"Hello, {name}! Welcome! Your name has {len(name)} letters!")
 
 st.set_page_config(page_title="Harvey", page_icon="H", layout="wide")
 
@@ -19,24 +20,30 @@ with st.sidebar:
     if saved:
         st.write(f"Saved mood is {mood} and creativity is {creativity}.")
 
-#left, right = st.columns(2)
-#left.write(f"Creativity:  {creativity}")
-#right.write(f"Mood: {mood}")
-
-#with st.chat_message("user"):
-    #st.write(f"Welcome!")
-#with st.chat_message("assistant"):
-    #st.write(f"Hello {name}! Welcome! Your name has {len(name)} letters!")
 import requests
 
-prompt = st.chat_input("Ask something her...")
-#r = requests.get(https://catfact.ninja/fact)
-#facts = r.json()["fact"]
+prompt = st.chat_input("Ask something here...")
 
 if prompt:
     with st.chat_message("user"):
         st.write(f"{prompt}")
     with st.chat_message("assistant"):
-        st.write(f"Hello {name}! Welcome! Heres what you wrote: {prompt}")
-    #with st.chat_message("user"):
-        #st.write(prompt)
+        if prompt == "Cat Fact":
+            r = requests.get("https://catfact.ninja/fact")
+            fact = r.json()["fact"]
+            st.write(f"{fact}")
+        else:
+            load_dotenv()
+            client = OpenAI(
+                #base_url="https://models.github.ai/inference",
+                base_url="https://api.groq.com/openai/v1",
+                api_key=os.getenv("AI_TOKEN"),
+            )
+            r = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}]
+            )
+
+            response = r.choices[0].message.content
+
+            st.write(response)
