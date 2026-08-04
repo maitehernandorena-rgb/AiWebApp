@@ -9,7 +9,12 @@ load_dotenv()
 
 #INITIALIZING ChromaDB CLIENT
 db= chromadb.PersistentClient(path="./chromadb")
-brain = db.get_or_create_collection("zeus")
+brain = db.get_or_create_collection("harvey")
+memory = db.get_or_create_collection("harvey_chat")
+SYSTEM_PROMPT = "You are Harvey. Friendly assistant to help with homework"
+
+def shorten(text, limit=500):
+    return text if len(text) <= limit else text[:limit] + " ... rest removed to keep it shorter"
 
 #CHUNKS DOWN DOCUMENT
 def chunk_by_sentence(text, max_size=400):
@@ -38,11 +43,22 @@ def store_document(file):
     )
     return len(text), len(chunks)
 
+#ADDING EXCHANGES TO MEMORY
+def remember_exchange(question, answer):
+    #Put this Q and A into long term memory so AI can remember
+    memory.add(
+        documents=[f"Question: {question}\n and ANswer: {shorten(answer)}"],
+        ids=[f"turn{memory.count()}"]
+    )
+
 #INTERFACE SETUP
 st.set_page_config(page_title="Harvey", page_icon="H", layout="wide")
 st.title("Harvey")
 st.subheader("Set up your AI in the Settings Tab")
 st.write("Harvey is a friendly AI here to help you with your homework or any concepts you are struggling to understand. """)
+
+if "messages" not in st.session_state:
+    st.session_state["messages"] = []
 
 #SIDEBAR
 with st.sidebar:
@@ -51,11 +67,21 @@ with st.sidebar:
         name = st.text_input("Enter your name: ")
         mood = st.multiselect("Select a few options for his mood:", ["nerdy", "caring", "organized", "straight to the point"])
         creativity = st.slider("Creativity", 0.0, 1.0, 0.0)
+        remember = st.slider("Recent turns to keep", 0,10,3)
+        recall = st.slider("Old exchanges to look up", 0,10,3)
         saved = st.form_submit_button("Save")
     if saved:
         st.write(f"Saved mood is {mood} and creativity is {creativity}.")
     st.caption(f"In memory: {brain.count()} chunks")
+    st.caption(f"Long term memory: {memory.count()} exchanges")
+    st.caption(f"On screen: {len(st.session_state.messages)} messages")
 
+    if st.button("Chear chat"):
+        st.session_state.messages = []
+        st.rerun
+    if st.button ("Forget everything"):
+        db.delete_collection("harvey_chat")
+        st.session_state.messages = []
 #INPUT
 user_input = st.chat_input("Ask something here...",
                        accept_file=True,
@@ -69,26 +95,33 @@ if user_input:
 
     #USER MESSAGE DISPLAY
     with st.chat_message("user"):
+        if prompt:
+            st.write(f"{prompt}")
+
         if prompt_file:
-            text = read_file(prompt_file)
+            #text = read_file(prompt_file)
             #chunks = chunk_by_sentence(text)
             clean_len, n_chunks = store_document(prompt_file)
-            if prompt:
-                st.write(f"{prompt}")
             st.write(f"{prompt_file.name}")
             st.caption(
                 f"{clean_len} characters. "
                 f"stored as {n_chunks} chunks."
             )
 
+        st.session_state.messages.append(
+            {"role": "user", "content": prompt if prompt else f"attached: {prompt_file.name}"}
+        )
+
     #ASSISTANT MESSAGE DISPLAY
     with st.chat_message("assistant"):
         if prompt == "Cat Fact":
             r = requests.get("https://catfact.ninja/fact")
             fact = r.json()["fact"]
+            answer = fact
             st.write(f"{fact}")
-        if not prompt:
-            st.write(f"Saved. Ask something here...")
+        elif not prompt:
+            answer = "Saved. Ask something here..."
+            st.write(answer)
 
         #AI GENERATION
         else:
@@ -96,30 +129,46 @@ if user_input:
             if brain.count() > 0:
                 hits = brain.query(query_texts=[prompt], n_results=5)
                 notes = "/n/n".join(hits["documents"][0])
-            if notes:
+
+            recalled = []
+            if recall > 0 and memory.count() > remember:
+                found = memory.query(query_texts=[prompt], n_results=recall)
+                recalled = "\n\n".join(found["documents"][0])
+            if notes or recalled:
                 full_prompt= (f"Answer using the notes if useful"
                               f"If the notes dont contain the answer, say so"
                               f"The notes could contain some irrelevant information"
                               f"{notes}"
+                              f"Things we talked about earlier {recalled}"
                               f"User question: {prompt}")
             else:
                 full_prompt= prompt
-            #system_prompt = f"""You are a {mood} assistant with {creativity} creativity from a scale from 0 to 1. You help students with homework or concepts hard to understand.
-            #Dont pretend you are anything but an AI here to help with homework or concepts hard to grasp. You do not intervene in the users personal life.
-            #Current prompt: {prompt}
-            #and here is {prompt_file} to help you answer the question"""
+
+            with st.expander("What I looked up"):
+                st.caption("From your documents")
+                st.text(shorten(notes, 800) or "nothing")
+                st.caption("From earlier conversations")
+                st.text(shorten(recalled, 800) or "nothing")
+
             client = OpenAI(
                 #base_url="https://models.github.ai/inference",
                 base_url="https://api.groq.com/openai/v1",
                 api_key=os.getenv("AI_TOKEN") or st.secrets["AI_TOKEN"],
             )
+
+            messages = [{"role": "user", "content": prompt}]
+            past = st.session_state.messages[:-1]
+            if remember>0:
+                for m in past[-(remember*2):]:
+                    messages.append({"role": m["role"], "content": shorten(m["content"])})
             r = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 temperature=creativity,
-                messages=([{"role": "system", "content": full_prompt},
-                          {"role": "user", "content": prompt}])
+                messages=messages
             )
 
-            response = r.choices[0].message.content
+            answer = r.choices[0].message.content
 
-            st.write(response)
+            st.write(answer)
+            remember_exchange(prompt, answer)
+        st.session_state.messages.append({"role": "user", "content": answer})
