@@ -61,7 +61,6 @@ user_input = st.chat_input("Ask something here...",
                        accept_file=True,
                        file_type = ["pdf", "txt"],)
 
-
 if user_input:
     prompt = user_input.text
     prompt_file = None
