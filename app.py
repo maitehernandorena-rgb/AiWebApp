@@ -18,8 +18,9 @@ SYSTEM_PROMPT = ("You are Kortex, you are here to optimize learning"
                  "RECALL: when asked to study or test knowledge, challenge the user with conceptual questions, use real world analogies"
                  "Be direct, encouraging, efficient, dont use filler words"
                  "Maximize information density"
-                 "if the users notes are missing critical context to be useful")
+)
 
+THRESHOLD=1.7
 
 def shorten(text, limit=500):
     return text if len(text) <= limit else text[:limit] + " ... rest removed to keep it shorter"
@@ -78,6 +79,7 @@ with st.sidebar:
         remember_documents = st.slider("How many chunks to remember", 0, 15, 5)
         remember = st.slider("Recent turns to keep", 0,10,3)
         recall = st.slider("Old exchanges to look up", 0,10,3)
+        notes_only = st.checkbox("Only answer using notes")
         saved = st.form_submit_button("Save")
     if saved:
         st.write(f"Saved mood is {mood} and creativity is {creativity}.")
@@ -133,7 +135,7 @@ if user_input:
         )
 
     #ASSISTANT MESSAGE DISPLAY
-    with st.chat_message("assistant"):
+    with (st.chat_message("assistant")):
         if prompt == "Cat Fact":
             r = requests.get("https://catfact.ninja/fact")
             fact = r.json()["fact"]
@@ -146,12 +148,14 @@ if user_input:
         #AI GENERATION
         else:
             notes = []
-            docs, dists = [], []
+            docs, dists, good = [], [], []
             if brain.count() > 0:
                 hits = brain.query(query_texts=[prompt], n_results=remember_documents)
                 docs = hits["documents"][0]
                 dists = hits["distances"][0]
-                notes = "\n\n".join(hits["documents"][0])
+                good = [d for d, s in zip(docs, dists) if s <= THRESHOLD]
+                notes = "\n\n".join(good)
+                #hits["documents"][0])
 
             recalled = []
             if recall > 0 and memory.count() > remember:
@@ -159,15 +163,16 @@ if user_input:
                 recalled = "\n\n".join(found["documents"][0])
 
             if notes or recalled:
-                full_prompt= (f"Answer using the notes if useful"
-                              f"If the notes dont contain the answer, say so"
-                              f"The notes could contain some irrelevant information"
-                              f"You can answer using your knowledge/information"
-                              f"This is the user's name: {name}"
-                              f"This is how the user wants you to act: {mood}"
-                              f"{notes}"
-                              f"Things we talked about earlier {recalled}"
-                              f"User question: {prompt}")
+                full_prompt= (
+                    f"Answer using the notes if useful"
+                    f"If the notes dont contain the answer, say so"
+                    f"The notes could contain some irrelevant information"
+                    f"You can answer using your knowledge/information"
+                    f"This is the user's name: {name}"
+                    f"This is how the user wants you to act: {mood}"
+                    f"{notes}"
+                    f"Things we talked about earlier {recalled}"
+                    f"User question: {prompt}")
             else:
                 full_prompt= prompt
 
@@ -176,7 +181,8 @@ if user_input:
                 st.caption("From your documents")
                 if docs:
                     for d, s, in zip(docs, dists):
-                        st.text(f"{s:.3f}  {d[:70]}")
+                        mark = "kept" if s < THRESHOLD else "dropped"
+                        st.text(f"{s:.3f} {mark} {d[:70]}")
                 else:
                     st.text("nothing")
                 #Recall Last Convos
@@ -203,14 +209,17 @@ if user_input:
                     messages.append({"role": m["role"], "content": shorten(m["content"])})
             messages.append({"role": "user", "content": full_prompt})
 
-            r = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                temperature=creativity,
-                messages=messages
-            )
-
-            answer = r.choices[0].message.content
-            st.write(answer)
+            if brain.count() > 0 and not good and not recalled and notes_only:
+                answer = "I don't know anything about that in youre notes"
+                st.write(answer)
+            else:
+                r = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    temperature=creativity,
+                    messages=messages
+                )
+                answer = r.choices[0].message.content
+                st.write(answer)
 
             remember_exchange(prompt, answer)
         st.session_state.messages.append({"role": "assistant", "content": answer})
