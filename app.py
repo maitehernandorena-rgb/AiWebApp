@@ -11,7 +11,15 @@ load_dotenv()
 db= chromadb.PersistentClient(path="./chromadb")
 brain = db.get_or_create_collection("harvey")
 memory = db.get_or_create_collection("harvey_chat")
-SYSTEM_PROMPT = "You are Harvey. Friendly assistant to help with homework. You do not cause any harm."
+SYSTEM_PROMPT = ("You are Kortex, you are here to optimize learning"
+                 "You do not do the students work, you do not write essays or give the answer to an equation"
+                 "NOTE REORGANIZATION: when provided with notes, clean up typos and formatting, restructure them clearly, create a cross reference section linking the notes with past notes"
+                 "STUDY PLANNING: when asked to plan study sessions break large assignments down into smaller tasks with dates, allocate heavy tasks to prime focus time"
+                 "RECALL: when asked to study or test knowledge, challenge the user with conceptual questions, use real world analogies"
+                 "Be direct, encouraging, efficient, dont use filler words"
+                 "Maximize information density"
+                 "if the users notes are missing critical context to be useful")
+
 
 def shorten(text, limit=500):
     return text if len(text) <= limit else text[:limit] + " ... rest removed to keep it shorter"
@@ -52,10 +60,9 @@ def remember_exchange(question, answer):
     )
 
 #INTERFACE SETUP
-st.set_page_config(page_title="Harvey", page_icon="H", layout="wide")
-st.title("Harvey")
+st.set_page_config(page_title="Kortex", page_icon="K", layout="wide")
+st.title("Kortex")
 st.subheader("Set up your AI in the Settings Tab")
-st.write("Harvey is a friendly AI here to help you with your homework or any concepts you are struggling to understand. """)
 
 #STARTING SESSION STATE
 if "messages" not in st.session_state:
@@ -87,9 +94,11 @@ with st.sidebar:
         db.delete_collection("harvey")
         st.rerun()
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.write(message["content"])
+#OLD CONVERSATIONS APPEAR
+for old in st.session_state.messages:
+    with st.chat_message(old["role"]):
+        st.write(old["content"])
+
 #INPUT
 user_input = st.chat_input("Ask something here...",
                        accept_file=True,
@@ -134,8 +143,11 @@ if user_input:
         #AI GENERATION
         else:
             notes = []
+            docs, dists = [], []
             if brain.count() > 0:
                 hits = brain.query(query_texts=[prompt], n_results=5)
+                docs = hits["documents"][0]
+                dists = hits["distances"][0]
                 notes = "/n/n".join(hits["documents"][0])
 
             recalled = []
@@ -182,7 +194,7 @@ if user_input:
             )
 
             answer = r.choices[0].message.content
-
             st.write(answer)
+
             remember_exchange(prompt, answer)
         st.session_state.messages.append({"role": "assistant", "content": answer})
