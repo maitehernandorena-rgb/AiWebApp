@@ -11,7 +11,7 @@ load_dotenv()
 db= chromadb.PersistentClient(path="./chromadb")
 brain = db.get_or_create_collection("harvey")
 memory = db.get_or_create_collection("harvey_chat")
-SYSTEM_PROMPT = "You are Harvey. Friendly assistant to help with homework"
+SYSTEM_PROMPT = "You are Harvey. Friendly assistant to help with homework. You do not cause any harm."
 
 def shorten(text, limit=500):
     return text if len(text) <= limit else text[:limit] + " ... rest removed to keep it shorter"
@@ -47,7 +47,7 @@ def store_document(file):
 def remember_exchange(question, answer):
     #Put this Q and A into long term memory so AI can remember
     memory.add(
-        documents=[f"Question: {question}\n and ANswer: {shorten(answer)}"],
+        documents=[f"Question: {question}\n and Answer: {shorten(answer)}"],
         ids=[f"turn{memory.count()}"]
     )
 
@@ -57,6 +57,7 @@ st.title("Harvey")
 st.subheader("Set up your AI in the Settings Tab")
 st.write("Harvey is a friendly AI here to help you with your homework or any concepts you are struggling to understand. """)
 
+#STARTING SESSION STATE
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
 
@@ -65,7 +66,7 @@ with st.sidebar:
     st.header("Settings")
     with st.form("settings"):
         name = st.text_input("Enter your name: ")
-        mood = st.multiselect("Select a few options for his mood:", ["nerdy", "caring", "organized", "straight to the point"])
+        mood = st.text_input("Enter a prompt for how you want Harvey to act: ")
         creativity = st.slider("Creativity", 0.0, 1.0, 0.0)
         remember = st.slider("Recent turns to keep", 0,10,3)
         recall = st.slider("Old exchanges to look up", 0,10,3)
@@ -76,12 +77,19 @@ with st.sidebar:
     st.caption(f"Long term memory: {memory.count()} exchanges")
     st.caption(f"On screen: {len(st.session_state.messages)} messages")
 
-    if st.button("Chear chat"):
+    if st.button("Clear chat"):
         st.session_state.messages = []
-        st.rerun
-    if st.button ("Forget everything"):
+        st.rerun()
+    if st.button ("Forget memory"):
         db.delete_collection("harvey_chat")
-        st.session_state.messages = []
+        st.rerun()
+    if st.button ("Forget all documents"):
+        db.delete_collection("harvey")
+        st.rerun()
+
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.write(message["content"])
 #INPUT
 user_input = st.chat_input("Ask something here...",
                        accept_file=True,
@@ -95,8 +103,6 @@ if user_input:
 
     #USER MESSAGE DISPLAY
     with st.chat_message("user"):
-        if prompt:
-            st.write(f"{prompt}")
 
         if prompt_file:
             #text = read_file(prompt_file)
@@ -107,6 +113,8 @@ if user_input:
                 f"{clean_len} characters. "
                 f"stored as {n_chunks} chunks."
             )
+        if prompt:
+            st.write(f"{prompt}")
 
         st.session_state.messages.append(
             {"role": "user", "content": prompt if prompt else f"attached: {prompt_file.name}"}
@@ -125,7 +133,7 @@ if user_input:
 
         #AI GENERATION
         else:
-            notes = 0
+            notes = []
             if brain.count() > 0:
                 hits = brain.query(query_texts=[prompt], n_results=5)
                 notes = "/n/n".join(hits["documents"][0])
@@ -134,10 +142,14 @@ if user_input:
             if recall > 0 and memory.count() > remember:
                 found = memory.query(query_texts=[prompt], n_results=recall)
                 recalled = "\n\n".join(found["documents"][0])
+
             if notes or recalled:
                 full_prompt= (f"Answer using the notes if useful"
                               f"If the notes dont contain the answer, say so"
                               f"The notes could contain some irrelevant information"
+                              f"You can answer using your knowledge/information"
+                              f"This is the user's name: {name}"
+                              f"This is how the user wants you to act: {mood}"
                               f"{notes}"
                               f"Things we talked about earlier {recalled}"
                               f"User question: {prompt}")
@@ -156,11 +168,13 @@ if user_input:
                 api_key=os.getenv("AI_TOKEN") or st.secrets["AI_TOKEN"],
             )
 
-            messages = [{"role": "user", "content": prompt}]
+            messages = [{"role": "system", "content": SYSTEM_PROMPT}]
             past = st.session_state.messages[:-1]
             if remember>0:
                 for m in past[-(remember*2):]:
                     messages.append({"role": m["role"], "content": shorten(m["content"])})
+            messages.append({"role": "user", "content": full_prompt})
+
             r = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 temperature=creativity,
@@ -171,4 +185,4 @@ if user_input:
 
             st.write(answer)
             remember_exchange(prompt, answer)
-        st.session_state.messages.append({"role": "user", "content": answer})
+        st.session_state.messages.append({"role": "assistant", "content": answer})
