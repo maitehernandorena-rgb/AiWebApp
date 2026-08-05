@@ -73,7 +73,7 @@ with st.sidebar:
     st.header("Settings")
     with st.form("settings"):
         name = st.text_input("Enter your name: ")
-        mood = st.text_input("Enter a prompt for how you want Harvey to act: ")
+        mood = st.text_input("Enter a prompt for how you want Kortex to act: ")
         creativity = st.slider("Creativity", 0.0, 1.0, 0.0)
         remember = st.slider("Recent turns to keep", 0,10,3)
         recall = st.slider("Old exchanges to look up", 0,10,3)
