@@ -1,7 +1,7 @@
 import os
 import chromadb
-import streamlit as st
 import requests
+import streamlit as st
 from dotenv import load_dotenv
 from openai import OpenAI
 from doc_helper import read_file
@@ -25,7 +25,7 @@ def shorten(text, limit=500):
     return text if len(text) <= limit else text[:limit] + " ... rest removed to keep it shorter"
 
 #CHUNKS DOWN DOCUMENT
-def chunk_by_sentence(text, max_size=400):
+def chunk_by_sentence(text, max_size=700):
     sentences = text.split(", ")
     chunks = []
     current = ""
@@ -73,8 +73,9 @@ with st.sidebar:
     st.header("Settings")
     with st.form("settings"):
         name = st.text_input("Enter your name: ")
-        mood = st.text_input("Enter a prompt for how you want Kortex to act: ")
+        mood = st.text_input("Personality (ex: organized, straight to the point, etc): ")
         creativity = st.slider("Creativity", 0.0, 1.0, 0.0)
+        remember_documents = st.slider("How many chunks to remember", 0, 15, 5)
         remember = st.slider("Recent turns to keep", 0,10,3)
         recall = st.slider("Old exchanges to look up", 0,10,3)
         saved = st.form_submit_button("Save")
@@ -89,9 +90,11 @@ with st.sidebar:
         st.rerun()
     if st.button ("Forget memory"):
         db.delete_collection("harvey_chat")
+        memory = db.get_or_create_collection("harvey_chat")
         st.rerun()
     if st.button ("Forget all documents"):
         db.delete_collection("harvey")
+        brain = db.get_or_create_collection("harvey")
         st.rerun()
 
 #OLD CONVERSATIONS APPEAR
@@ -145,10 +148,10 @@ if user_input:
             notes = []
             docs, dists = [], []
             if brain.count() > 0:
-                hits = brain.query(query_texts=[prompt], n_results=5)
+                hits = brain.query(query_texts=[prompt], n_results=remember_documents)
                 docs = hits["documents"][0]
                 dists = hits["distances"][0]
-                notes = "/n/n".join(hits["documents"][0])
+                notes = "\n\n".join(hits["documents"][0])
 
             recalled = []
             if recall > 0 and memory.count() > remember:
@@ -169,11 +172,24 @@ if user_input:
                 full_prompt= prompt
 
             with st.expander("What I looked up"):
+                #Notes
                 st.caption("From your documents")
-                st.text(shorten(notes, 800) or "nothing")
+                if docs:
+                    for d, s, in zip(docs, dists):
+                        st.text(f"{s:.3f}  {d[:70]}")
+                else:
+                    st.text("nothing")
+                #Recall Last Convos
                 st.caption("From earlier conversations")
                 st.text(shorten(recalled, 800) or "nothing")
-
+                #Recall Most Recent Convos
+                st.caption("Recent messages I can still see")
+                recent = st.session_state.messages[:-1][-(remember*2):]
+                if recent:
+                    for m in recent:
+                        st.text(f"{m['role']}: {shorten(m['content'], 80)}")
+                else:
+                    st.text("nothing")
             client = OpenAI(
                 #base_url="https://models.github.ai/inference",
                 base_url="https://api.groq.com/openai/v1",
