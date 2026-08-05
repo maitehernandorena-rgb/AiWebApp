@@ -158,9 +158,13 @@ if user_input:
                 #hits["documents"][0])
 
             recalled = []
+            old_docs , old_dists, old_good = [], [], []
             if recall > 0 and memory.count() > remember:
                 found = memory.query(query_texts=[prompt], n_results=recall)
-                recalled = "\n\n".join(found["documents"][0])
+                old_docs = found["documents"][0]
+                old_dists = found["distances"][0]
+                old_good = [d for d, s in zip(docs, dists) if s <= THRESHOLD]
+                recalled = "\n\n".join(old_good)
 
             if notes or recalled:
                 full_prompt= (
@@ -187,7 +191,11 @@ if user_input:
                     st.text("nothing")
                 #Recall Last Convos
                 st.caption("From earlier conversations")
-                st.text(shorten(recalled, 800) or "nothing")
+                if old_docs:
+                    for d, s, in zip(old_docs, old_dists):
+                        mark = "kept" if s < THRESHOLD else "dropped"
+                        st.text(f"{s:.3f} {mark} {d[:70]}")
+
                 #Recall Most Recent Convos
                 st.caption("Recent messages I can still see")
                 recent = st.session_state.messages[:-1][-(remember*2):]
@@ -209,8 +217,8 @@ if user_input:
                     messages.append({"role": m["role"], "content": shorten(m["content"])})
             messages.append({"role": "user", "content": full_prompt})
 
-            if brain.count() > 0 and not good and not recalled and notes_only:
-                answer = "I don't know anything about that in youre notes"
+            if brain.count() > 0 and not good and not old_good and notes_only:
+                answer = "I don't know anything about that in your notes"
                 st.write(answer)
             else:
                 r = client.chat.completions.create(
