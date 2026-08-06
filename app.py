@@ -19,7 +19,7 @@ brain = db.get_or_create_collection("harvey")
 memory = db.get_or_create_collection("harvey_chat")
 
 #SYSTEM PROMPT
-def anchor_prompt(notes, recalled, questions):
+def anchor_prompt(mood, response_length, notes, recalled, questions, web_info=""):
     return f"""
 # ROLE AND PURPOSE
 You are the "Projectionist," an expert, friendly, and deeply knowledgeable AI movie companion. Your goal is to guide users through their entire movie-watching experience—from selecting the right film to answering mid-watch questions and discussing the movie after the credits roll.
@@ -59,7 +59,9 @@ INPUT/OUTPUT FORMATTING
 
 # STARTUP INSTRUCTION
 Begin your first interaction by introducing yourself briefly as the Projectionist and asking the user what phase of movie-watching they need help with today (finding something to watch, getting a quick refresher/mid-watch context, or discussing a movie they just finished).
-
+You are not a search engine. You are a movie companion.
+If the user asks about a movie, respond as someone sitting beside them discussing cinema.
+Correct gently, never abruptly.
 
 CONTEXT 
 {notes if notes else "nothing"}
@@ -78,8 +80,7 @@ def shorten(text, limit=500):
 #CHUNKS DOWN DOCUMENT
 def chunk_by_sentence(text, max_size=700):
     sentences = text.split(", ")
-    chunks = []
-    current = ""
+    chunks, current = [], ""
     for sentence in sentences:
         if len(current) + len(sentence) < max_size:
             current += sentence + ". "
@@ -112,7 +113,7 @@ def remember_exchange(question, answer):
     )
 
 #INTERFACE SETUP
-st.set_page_config(page_title="The Projectionist", page_icon="K", layout="wide")
+st.set_page_config(page_title="The Projectionist", page_icon="🎥", layout="wide")
 
 def set_bg_url(url):
   st.markdown(
@@ -169,6 +170,7 @@ with st.sidebar:
         remember = st.slider("Recent turns to keep", 0,10,3)
         recall = st.slider("Old exchanges to look up", 0,10,3)
         notes_only = st.checkbox("Only answer using notes")
+        enable_web_search = st.checkbox("Enable Live Web Search", value=True)
         saved = st.form_submit_button("Save")
     if saved:
         st.write(f"Saved personality is {mood} and creativity is {creativity}.")
@@ -260,13 +262,45 @@ if user_input:
                 old_good = [d for d, s in zip(old_docs, old_dists) if s <= THRESHOLD]
                 recalled = "\n\n".join(old_good)
 
+            #WEB SEARCH
+            web_info = ""
+            web_sources = []
+            if enable_web_search and tavily_client and prompt:
+                try:
+                    search_res = tavily_client.search(
+                        query=prompt, search_depth="basic", max_results=3,
+                    )
+                    for r in search_res.get("results", []):
+                        web_sources.append(f"{r.get("title")} ({r.get("url")})")
+                        web_info += f"Source: {r.get('title')}\nContent: {r.get('content')}\n\n"
+                except Exception as e:
+                    st.warning(f"Web search error: {e}")
+                system_prompt = anchor_prompt(mood, response_length, notes, recalled, prompt, web_info)
+
+                with st.expander("What I looked up"):
+                    # Live Web Search
+                    st.caption("From Live Web Search")
+                    if web_sources:
+                        for ws in web_sources:
+                            st.text(f"🌐 {ws}")
+                    else:
+                        st.text("nothing")
+
+            #NOTES
             if notes or recalled:
-                full_prompt= anchor_prompt(notes, recalled, prompt)
+                full_prompt= anchor_prompt(mood, response_length, notes, recalled, prompt, web_info)
             else:
                 full_prompt= prompt
 
             with st.expander("What I looked up"):
-                #Notes
+                #SEARCHED INFORMATION
+                st.caption("From Live Web Search")
+                if web_sources:
+                    for ws in web_sources:
+                        st.text(f"🌐 {ws}")
+                else:
+                    st.text("nothing")
+                #RECALLING FROM NOTES
                 st.caption("From your documents")
                 if docs:
                     for d, s, m in zip(docs, dists, metas):
@@ -274,14 +308,16 @@ if user_input:
                         st.text(f"{s:.3f} {mark} {m["source"]} {d[:70]}")
                 else:
                     st.text("nothing")
-                #Recall Last Convos
+                #RECALLING FROM EARLIER CONVERSATIONS
                 st.caption("From earlier conversations")
                 if old_docs:
                     for d, s, in zip(old_docs, old_dists):
                         mark = "kept" if s < THRESHOLD else "dropped"
                         st.text(f"{s:.3f} {mark} {d[:70]}")
+                else:
+                    st.text("nothing")
 
-                #Recall Most Recent Convos
+                #RECALLING FROM MOST RECENT CONVERSATION
                 st.caption("Recent messages I can still see")
                 recent = st.session_state.messages[:-1][-(remember*2):]
                 if recent:
@@ -294,7 +330,7 @@ if user_input:
                 api_key=os.getenv("AI_TOKEN") or st.secrets["AI_TOKEN"],
             )
 
-            messages = [{"role": "system", "content": anchor_prompt(notes, recalled, prompt)}]
+            messages = [{"role": "system", "content": anchor_prompt(mood, response_length, notes, recalled, prompt, web_info)}]
             past = st.session_state.messages[:-1]
             if remember>0:
                 for m in past[-(remember*2):]:
