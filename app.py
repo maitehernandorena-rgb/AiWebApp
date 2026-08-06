@@ -5,43 +5,70 @@ import streamlit as st
 from dotenv import load_dotenv
 from openai import OpenAI
 from doc_helper import read_file
+from tavily import TavilyClient
 load_dotenv()
+
+#INITIALIZING TAVILY SEARCH CLIENT
+tavily_key = os.getenv("TAVILY_API_KEY") or st.secrets.get("TAVILY_API_KEY")
+tavily_client = TavilyClient(api_key=tavily_key) if tavily_key else None
+
 
 #INITIALIZING ChromaDB CLIENT
 db= chromadb.PersistentClient(path="./chromadb")
 brain = db.get_or_create_collection("harvey")
 memory = db.get_or_create_collection("harvey_chat")
 
+#SYSTEM PROMPT
 def anchor_prompt(notes, recalled, questions):
     return f"""
-You are Kortex, you are here to optimize learning
-You do not do the students work, you do not write essays or give the answer to an equation
-NOTE REORGANIZATION: when provided with notes, clean up typos and formatting, restructure them clearly, create a cross reference section linking the notes with past notes
-STUDY PLANNING: when asked to plan study sessions break large assignments down into smaller tasks with dates, allocate heavy tasks to prime focus time
-RECALL: when asked to study or test knowledge, challenge the user with conceptual questions, use real world analogies
-Be direct, encouraging, efficient, dont use filler words
-Maximize information density
-You give funny tricks to remember information
-You use mnemonic devices in a funny way
-Simplify concepts by making metaphor when deemed useful
-After each fact given provide the sources used
+# ROLE AND PURPOSE
+You are the "Projectionist," an expert, friendly, and deeply knowledgeable AI movie companion. Your goal is to guide users through their entire movie-watching experience—from selecting the right film to answering mid-watch questions and discussing the movie after the credits roll.
+
+GENERAL BEHAVIOR & STYLE
+Personality the user wants: {mood}
+Default Tone: Warm, conversational, enthusiastic about cinema, and perceptive.
+Response length the user wants: {response_length}
+Default response length: Use bullet points and bold text for easy reading on screens.
+
+The Standard Rule (STRICT NO-SPOILER POLICY):
+   - NEVER reveal plot twists, character deaths, or ending secrets unless the user explicitly confirms they have already finished the movie or specifically asks for a spoiler.
+   - If a mid-watch question borders on a future plot reveal, answer ONLY up to the point of the scene they are watching, and explicitly state: *"I can't answer further without spoiling what happens next!"*
+
+OPERATIONAL MODES
+When interacting with the user, identify which mode applies or ask the user to clarify if needed.
+
+MODE 1: PRE-WATCH (Selection & Custom Recommendations)
+- Tailored Recommendations: Recommend movies based on precise user constraints (e.g., mood, exact duration, high tension vs. low anxiety, era, or specific tropes).
+- Trigger & Content Warnings: Provide detailed, non-spoiler assessments of content intensity (e.g., jumpscares, gore, sensitive themes) upon request.
+- Marathon Curation: Design thematic double-features or franchise watch orders (e.g., release order vs. chronological order) with brief explanations of why the movies pair well.
+- Pre-Watch Primer: Give 2–3 quick, non-spoiler facts before they press play (historical context).
+
+MODE 2: MID-WATCH (Timeline, Character & Context Orientation)
+- Franchise & Memory Refresher: Provide quick recaps of previous films, complex family trees, or past plot points to help lost viewers catch up.
+- Scene & Character Context: Explain current character relationships, motives, or lore without hinting at future events.
+- Strict Guardrail: Always confirm where the user is in the movie/franchise before answering detailed plot queries.
+
+MODE 3: POST-WATCH (Debrief, Analysis & Discussion)
+- Ending & Symbolism Breakdown: Explain complex, open-ended, or ambiguous endings, thematic motifs, and hidden easter eggs.
+- Discussion Companion: Act as a conversational partner to debate character choices, director decisions, alternate endings, or personal takes.
+- Next-Watch Mapping: Suggest what to watch next based specifically on what they loved or hated about the film they just finished.
+
+INPUT/OUTPUT FORMATTING
+- Format movie titles in Bold accompanied by the release year in parentheses: e.g., Knives Out (2019).
+- For recommendations, provide: Title (Year), Genre, Runtime, a 2-sentence pitch, and a "Why it fits your request" note.
+
+# STARTUP INSTRUCTION
+Begin your first interaction by introducing yourself briefly as the Projectionist and asking the user what phase of movie-watching they need help with today (finding something to watch, getting a quick refresher/mid-watch context, or discussing a movie they just finished).
+
 
 CONTEXT 
 {notes if notes else "nothing"}
 EARLIER
 {recalled if recalled else "nothing"}
+USERNAME
+{name}
 
 """
-
-
-SYSTEM_PROMPT = ("You are Kortex, you are here to optimize learning"
-                 "You do not do the students work, you do not write essays or give the answer to an equation"
-                 "NOTE REORGANIZATION: when provided with notes, clean up typos and formatting, restructure them clearly, create a cross reference section linking the notes with past notes"
-                 "STUDY PLANNING: when asked to plan study sessions break large assignments down into smaller tasks with dates, allocate heavy tasks to prime focus time"
-                 "RECALL: when asked to study or test knowledge, challenge the user with conceptual questions, use real world analogies"
-                 "Be direct, encouraging, efficient, dont use filler words"
-                 "Maximize information density"
-)
 
 THRESHOLD=1.7
 
@@ -85,9 +112,46 @@ def remember_exchange(question, answer):
     )
 
 #INTERFACE SETUP
-st.set_page_config(page_title="Kortex", page_icon="K", layout="wide")
-st.title("Kortex")
-st.subheader("Set up your AI in the Settings Tab")
+st.set_page_config(page_title="The Projectionist", page_icon="K", layout="wide")
+
+def set_bg_url(url):
+  st.markdown(
+      f"""
+        <style>
+        /* 1. Background image with a 60% dark tint overlay */
+        [data-testid="stAppViewContainer"] {{
+            background-image: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.6)), url("{url}");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+        }}
+
+        /* 2. Style chat message boxes as crisp, semi-transparent cards */
+        [data-testid="stChatMessage"] {{
+            background-color: rgba(15, 15, 25, 0.8) !important;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            color: #FFFFFF !important;
+        }}
+
+        /* 3. Force all text, headers, and paragraphs inside messages to be white */
+        [data-testid="stChatMessage"] p, 
+        [data-testid="stChatMessage"] span,
+        [data-testid="stChatMessage"] div {{
+            color: #FFFFFF !important;
+        }}
+        </style>
+        """,
+      unsafe_allow_html=True,
+  )
+set_bg_url("https://i.pinimg.com/1200x/5a/b4/fa/5ab4fa66dee157fea84e4f0a8e4113ba.jpg")
+
+st.title("The Projectionist")
+st.subheader("Start by personalizing your AI in the Settings Tab")
+st.text("If you don't know where to start just type in 'hey'")
 
 #STARTING SESSION STATE
 if "messages" not in st.session_state:
@@ -98,7 +162,8 @@ with st.sidebar:
     st.header("Settings")
     with st.form("settings"):
         name = st.text_input("Enter your name: ")
-        mood = st.text_input("Personality (ex: organized, straight to the point, etc): ")
+        mood = st.selectbox("Personality: ", ["Casual Film Buff", "Academic Film Critic", "No-Nonsense", "Family Friendly"])
+        response_length = st.selectbox("Response length: ", ["Bullet Points", "Balanced Overview", "Deep Dive" ])
         creativity = st.slider("Creativity", 0.0, 1.0, 0.0)
         remember_documents = st.slider("How many chunks to remember", 0, 15, 5)
         remember = st.slider("Recent turns to keep", 0,10,3)
@@ -106,7 +171,7 @@ with st.sidebar:
         notes_only = st.checkbox("Only answer using notes")
         saved = st.form_submit_button("Save")
     if saved:
-        st.write(f"Saved mood is {mood} and creativity is {creativity}.")
+        st.write(f"Saved personality is {mood} and creativity is {creativity}.")
     st.caption(f"In memory: {brain.count()} chunks")
     st.caption(f"Long term memory: {memory.count()} exchanges")
     st.caption(f"On screen: {len(st.session_state.messages)} messages")
@@ -225,12 +290,11 @@ if user_input:
                 else:
                     st.text("nothing")
             client = OpenAI(
-                #base_url="https://models.github.ai/inference",
                 base_url="https://api.groq.com/openai/v1",
                 api_key=os.getenv("AI_TOKEN") or st.secrets["AI_TOKEN"],
             )
 
-            messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+            messages = [{"role": "system", "content": anchor_prompt(notes, recalled, prompt)}]
             past = st.session_state.messages[:-1]
             if remember>0:
                 for m in past[-(remember*2):]:

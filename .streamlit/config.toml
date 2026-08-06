@@ -1,0 +1,33 @@
+[theme]
+base = "dark"
+
+primaryColor = "#05a19d"
+backgroundColor = "#023838"
+secondaryBackgroundColor = "#035755"
+textColor = "#f8fafc"
+borderColor = "#2A3446"
+linkColor = "#7FD1C1"
+linkUnderline = true
+
+codeBackgroundColor = "#0B0E14"
+codeTextColor = "#B8E1D9"
+dataframeBorderColor = "#2A3446"
+dataframeHeaderBackgroundColor = "#1B2233"
+
+font = "rockwell"
+headingFont = "rockwell"
+codeFont = "monospace"
+baseFontSize = 16
+baseFontWeight = 400
+codeFontSize = "0.9rem"
+codeFontWeight = 400
+
+baseRadius = "full"
+buttonRadius = "full"
+showWidgetBorder = true
+showSidebarBorder = true
+
+metricValueFontSize = "2rem"
+metricValueFontWeight = 600
+
+chartCategoricalColors = ["#FFC93C", "#7FD1C1", "#E88873", "#8E9AF2", "#B8E1D9"]
