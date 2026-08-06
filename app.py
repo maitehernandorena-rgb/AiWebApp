@@ -11,6 +11,29 @@ load_dotenv()
 db= chromadb.PersistentClient(path="./chromadb")
 brain = db.get_or_create_collection("harvey")
 memory = db.get_or_create_collection("harvey_chat")
+
+def anchor_prompt(notes, recalled, questions):
+    return f"""
+You are Kortex, you are here to optimize learning
+You do not do the students work, you do not write essays or give the answer to an equation
+NOTE REORGANIZATION: when provided with notes, clean up typos and formatting, restructure them clearly, create a cross reference section linking the notes with past notes
+STUDY PLANNING: when asked to plan study sessions break large assignments down into smaller tasks with dates, allocate heavy tasks to prime focus time
+RECALL: when asked to study or test knowledge, challenge the user with conceptual questions, use real world analogies
+Be direct, encouraging, efficient, dont use filler words
+Maximize information density
+You give funny tricks to remember information
+You use mnemonic devices in a funny way
+Simplify concepts by making metaphor when deemed useful
+After each fact given provide the sources used
+
+CONTEXT 
+{notes if notes else "nothing"}
+EARLIER
+{recalled if recalled else "nothing"}
+
+"""
+
+
 SYSTEM_PROMPT = ("You are Kortex, you are here to optimize learning"
                  "You do not do the students work, you do not write essays or give the answer to an equation"
                  "NOTE REORGANIZATION: when provided with notes, clean up typos and formatting, restructure them clearly, create a cross reference section linking the notes with past notes"
@@ -49,6 +72,7 @@ def store_document(file):
     brain.add(
         documents=chunks,
         ids=[f"{prefix}_chunks{i}" for i in range(len(chunks))],
+        metadatas=[{"source": file.name, "chunk":i} for i in range(len(chunks))],
     )
     return len(text), len(chunks)
 
@@ -148,13 +172,18 @@ if user_input:
         #AI GENERATION
         else:
             notes = []
-            docs, dists, good = [], [], []
+            docs, dists, good, metas, used_sources = [], [], [], [], []
             if brain.count() > 0:
                 hits = brain.query(query_texts=[prompt], n_results=remember_documents)
                 docs = hits["documents"][0]
                 dists = hits["distances"][0]
+                metas = hits["metadatas"][0]
+                for d, s, m in zip(docs, dists, metas):
+                    if s<THRESHOLD:
+                        good.append(d)
+                        used_sources.append(f"{m['source']} (chunk {m['chunk']}")
                 good = [d for d, s in zip(docs, dists) if s <= THRESHOLD]
-                notes = "\n\n".join(good)
+                notes = "\n\n".join(f"Sources {i +1} {d}" for i, d in enumerate(good))
                 #hits["documents"][0])
 
             recalled = []
@@ -163,20 +192,11 @@ if user_input:
                 found = memory.query(query_texts=[prompt], n_results=recall)
                 old_docs = found["documents"][0]
                 old_dists = found["distances"][0]
-                old_good = [d for d, s in zip(docs, dists) if s <= THRESHOLD]
+                old_good = [d for d, s in zip(old_docs, old_dists) if s <= THRESHOLD]
                 recalled = "\n\n".join(old_good)
 
             if notes or recalled:
-                full_prompt= (
-                    f"Answer using the notes if useful"
-                    f"If the notes dont contain the answer, say so"
-                    f"The notes could contain some irrelevant information"
-                    f"You can answer using your knowledge/information"
-                    f"This is the user's name: {name}"
-                    f"This is how the user wants you to act: {mood}"
-                    f"{notes}"
-                    f"Things we talked about earlier {recalled}"
-                    f"User question: {prompt}")
+                full_prompt= anchor_prompt(notes, recalled, prompt)
             else:
                 full_prompt= prompt
 
@@ -184,9 +204,9 @@ if user_input:
                 #Notes
                 st.caption("From your documents")
                 if docs:
-                    for d, s, in zip(docs, dists):
+                    for d, s, m in zip(docs, dists, metas):
                         mark = "kept" if s < THRESHOLD else "dropped"
-                        st.text(f"{s:.3f} {mark} {d[:70]}")
+                        st.text(f"{s:.3f} {mark} {m["source"]} {d[:70]}")
                 else:
                     st.text("nothing")
                 #Recall Last Convos
@@ -228,6 +248,10 @@ if user_input:
                 )
                 answer = r.choices[0].message.content
                 st.write(answer)
+                if used_sources:
+                    for i, src in enumerate(used_sources):
+                        st.captions(f"Sources {i+1}: {src}")
+                    st.caption("Sources: " + ", ".join(sorted(set(used_sources))))
 
             remember_exchange(prompt, answer)
         st.session_state.messages.append({"role": "assistant", "content": answer})
