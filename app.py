@@ -20,7 +20,7 @@ brain = db.get_or_create_collection("harvey")
 memory = db.get_or_create_collection("harvey_chat")
 
 #SYSTEM PROMPT
-def anchor_prompt(user_name, personality, length_of_response, context, rerecalled, questions, theweb_info="", strict_docs_only=False):
+def anchor_prompt(user_name, personality, length_of_response, context, rerecalled, questions, theweb_info=""):
     return f"""
 
 ROLE AND PURPOSE
@@ -174,8 +174,8 @@ with st.sidebar:
             "Knowledge source",
             [
                 "Documents Only",
-                "Web Search + AI Knowledge",
-                "All Sources (Docs + Web + AI)"
+                "Web Search",
+                "All Sources (Docs + Web)"
             ],
             index=2
         )
@@ -190,8 +190,8 @@ with st.sidebar:
     if saved:
         st.write(f"Saved personality is {mood} and creativity is {creativity}.")
 
-    use_docs = knowledge_source in ["Documents Only", "All Sources (Docs + Web + AI)"]
-    use_web = knowledge_source in ["Web Search + AI Knowledge", "All Sources (Docs + Web + AI)"]
+    use_docs = knowledge_source in ["Documents Only", "All Sources (Docs + Web)"]
+    use_web = knowledge_source in ["Web Search", "All Sources (Docs + Web)"]
     strict_docs_only = (knowledge_source == "Documents Only")
 
     st.caption(f"In memory: {brain.count()} chunks")
@@ -352,10 +352,9 @@ if user_input:
                         rerecalled=recalled,
                         questions=prompt,
                         theweb_info=web_info,
-                        strict_docs_only=strict_docs_only
                     )
 
-                    messages = [{"role": "system", "content": anchor_prompt(name, mood, response_length, notes, recalled, prompt, web_info)}]
+                    messages = [{"role": "system", "content": system_prompt}]
                     past = st.session_state.messages[:-1]
                     if remember>0:
                         for m in past[-(remember*2):]:
