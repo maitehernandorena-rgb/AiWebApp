@@ -5,3 +5,4 @@ pypdf
 requests
 chromadb
 tavily
+dotenv
