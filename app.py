@@ -1,6 +1,7 @@
 import os
 import chromadb
 import requests
+import time
 import streamlit as st
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -114,7 +115,7 @@ def remember_exchange(question, reply):
     #Put this Q and A into long term memory so AI can remember
     memory.add(
         documents=[f"Question: {question}\n and Answer: {shorten(reply)}"],
-        ids=[f"turn{memory.count()}"]
+        ids=[f"turn{time.time()}"]
     )
 
 #INTERFACE SETUP
